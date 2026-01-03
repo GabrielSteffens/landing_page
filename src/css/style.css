@@ -1,0 +1,208 @@
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+:root {
+    /* Pixel Art Palette */
+    --bg-color: #000000;
+    --text-color: #ffffff;
+
+    --primary-color: #ff0055;
+    /* Neon Pink */
+    --secondary-color: #00ff88;
+    /* Neon Green */
+    --accent-color: #00e5ff;
+    /* Cyan */
+    --yellow-color: #ffff00;
+
+    --border-width: 4px;
+    --font-family: 'Press Start 2P', cursive;
+
+    --spacing-sm: 10px;
+    --spacing-md: 20px;
+    --spacing-lg: 40px;
+}
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: var(--font-family);
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    line-height: 1.5;
+    font-size: 12px;
+    /* Pixel fonts are wide */
+    image-rendering: pixelated;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+h1,
+h2,
+h3 {
+    text-transform: uppercase;
+    color: var(--yellow-color);
+    text-shadow: 4px 4px 0px #ff0055;
+    margin-bottom: var(--spacing-md);
+    line-height: 1.4;
+}
+
+p {
+    color: #ccc;
+    margin-bottom: var(--spacing-md);
+    line-height: 1.8;
+}
+
+a {
+    color: var(--accent-color);
+    text-decoration: none;
+}
+
+a:hover {
+    text-decoration: underline;
+    color: white;
+}
+
+/* Container */
+.container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 0 var(--spacing-md);
+}
+
+.section {
+    padding: var(--spacing-lg) 0;
+}
+
+/* NES Style Container */
+.nes-container {
+    position: relative;
+    background: black;
+    border: var(--border-width) solid white;
+    padding: var(--spacing-md);
+    margin-bottom: var(--spacing-md);
+}
+
+.nes-container.with-title {
+    margin-top: var(--spacing-lg);
+}
+
+.title {
+    position: absolute;
+    top: -1.2rem;
+    left: 1rem;
+    background: black;
+    padding: 0 10px;
+    color: var(--secondary-color);
+    font-size: 1rem;
+}
+
+/* Buttons (Retro) */
+.btn {
+    display: inline-block;
+    background: white;
+    color: black;
+    border: 4px solid #b0b0b0;
+    /* Light gray shadow */
+    border-right-color: #505050;
+    /* Dark gray shadow */
+    border-bottom-color: #505050;
+    padding: 15px 20px;
+    text-transform: uppercase;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: transform 0.1s;
+}
+
+.btn:active {
+    transform: translate(4px, 4px);
+    border-color: #505050;
+    border-right-color: #b0b0b0;
+    border-bottom-color: #b0b0b0;
+}
+
+.btn-primary {
+    background: var(--primary-color);
+    color: white;
+    border-color: #ff6699;
+    border-right-color: #990033;
+    border-bottom-color: #990033;
+}
+
+/* Navigation / Header */
+.main-header {
+    text-align: center;
+    border-bottom: 4px solid var(--secondary-color);
+    padding: var(--spacing-lg) 0;
+    margin-bottom: var(--spacing-lg);
+}
+
+/* Games Grid */
+.games-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-lg);
+    justify-content: center;
+}
+
+.game-preview {
+    width: 300px;
+    border: 4px solid var(--accent-color);
+    background: #111;
+    padding: 10px;
+    text-align: center;
+}
+
+.preview-box {
+    width: 100%;
+    height: 200px;
+    background: #222;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 10px;
+    border: 2px dashed #444;
+}
+
+/* CRT Scanline Effect (Optional Overlay) */
+.scanlines {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(to bottom,
+            rgba(255, 255, 255, 0),
+            rgba(255, 255, 255, 0) 50%,
+            rgba(0, 0, 0, 0.1) 50%,
+            rgba(0, 0, 0, 0.1));
+    background-size: 100% 4px;
+    pointer-events: none;
+    z-index: 999;
+}
+
+/* Canvas Wrapper for Game Pages */
+.game-layout {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+canvas {
+    border: 8px solid white;
+    box-shadow: 10px 10px 0px rgba(255, 255, 255, 0.2);
+    margin-bottom: var(--spacing-md);
+    max-width: 100%;
+}
+
+.back-link {
+    display: inline-block;
+    margin-bottom: var(--spacing-md);
+    color: var(--yellow-color);
+    text-transform: uppercase;
+}

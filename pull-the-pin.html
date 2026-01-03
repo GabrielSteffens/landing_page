@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PULL THE PIN - Fake Ads Arcade</title>
+    <link rel="stylesheet" href="/src/css/style.css">
+</head>
+
+<body>
+    <div class="scanlines"></div>
+
+    <div class="container" style="padding-top: 20px;">
+        <a href="/" class="back-link">&lt; BACK TO ARCADE</a>
+    </div>
+
+    <main class="container game-layout">
+        <div class="nes-container with-title" style="width: 100%; max-width: 500px; text-align: center;">
+            <p class="title">PULL THE PIN</p>
+
+            <canvas id="game-canvas" width="360" height="640"></canvas>
+
+            <div id="game-ui">
+                <p>CLICK PINS TO PULL</p>
+                <button id="restart-btn" class="btn btn-primary">RESTART LEVEL</button>
+            </div>
+        </div>
+    </main>
+
+    <script type="module" src="/src/game1.js"></script>
+</body>
+
+</html>
