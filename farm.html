@@ -17,6 +17,19 @@
         <h2 class="game-title-overlay">FARM TYCOON 3D</h2>
     </div>
 
+    <!-- HUD Layer -->
+    <div id="ui-layer">
+        <div id="hud">
+            <div class="resource-counter" style="color: #ff6b6b;">
+                <span>🥩</span> <span id="meat-count">0</span>
+            </div>
+            <div class="resource-counter" style="color: #ffd700;">
+                <span>💰</span> <span id="coin-count">0</span>
+            </div>
+        </div>
+        <div id="upgrade-panel"></div>
+    </div>
+
     <!-- Farm Game Container (No canvas init here, Three.js creates it) -->
     <div id="game-container" style="width: 100%; height: 100vh; overflow: hidden;"></div>
 
