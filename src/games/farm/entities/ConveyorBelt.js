@@ -1,16 +1,33 @@
 import * as THREE from 'three';
 
 export class ConveyorBelt {
-    constructor(path, scene) {
+    constructor(path, scene, debugIndex = -1) {
         this.scene = scene;
         this.meshes = [];
 
+        // KILL SWITCH: Prevent Zone 0 Belt (Ghost or not)
+        // Zone 0 coords: x=250, y=490 (approx 240+250)
+        // User requested this specific belt be removed as they consider it "unused/bugged".
+        if (Math.abs(path[0].x - 250) < 5 && Math.abs(path[0].y - 490) < 5) {
+            console.warn("BLOCKED BELT CREATION AT ZONE 0 (250, 490) - KILL SWITCH ACTIVE");
+            return;
+        }
+
+        // Initial Texture (Placeholder or direct load)
         const texLoader = new THREE.TextureLoader();
-        const texture = texLoader.load('/farm_assets/textures/path.png');
+        const texture = texLoader.load(`/farm_assets/textures/conveyor.png?t=${Date.now()}`);
         texture.wrapS = THREE.RepeatWrapping;
         texture.wrapT = THREE.RepeatWrapping;
         texture.magFilter = THREE.NearestFilter;
         texture.minFilter = THREE.NearestFilter;
+
+        const material = new THREE.MeshStandardMaterial({
+            map: texture,
+            roughness: 1,
+            bumpScale: 0.5,
+            transparent: true,
+            alphaTest: 0.1
+        });
 
         // Loop through segments
         for (let i = 0; i < path.length - 1; i++) {
@@ -28,39 +45,20 @@ export class ConveyorBelt {
             t.needsUpdate = true;
             t.repeat.set(length / 32, 1); // 32px per tile
 
-            const material = new THREE.MeshStandardMaterial({
-                map: t,
-                roughness: 1,
-                bumpScale: 0.5
-            });
-
-            // Adjust geometry length slightly to avoid gaps? Or overlap?
-            // Let's use exact length + small overlap
-            // Use Plane for flat road (Aesthetic only)
-            const geo = new THREE.PlaneGeometry(length + 2, 30);
-            const mesh = new THREE.Mesh(geo, material);
-
-            mesh.rotation.x = -Math.PI / 2; // Lay flat on ground
-            mesh.rotation.y = -angle; // Rotate to face direction (applied after X rot? No, Euler order is XYZ usually)
-            // Wait, if I set rotation.x and rotation.y...
-            // ThreeJS Default Order is XYZ.
-            // X rotates (Up) -> Flat. Local Z points Up (World Y). Local Y points Back (World -Z).
-            // Y rotates around World Y (because Local Z is up... wait).
-            // Actually, simpler: mesh.rotation.set(-Math.PI/2, 0, -angle); -> Orbit controls style.
-            // Let's verify rotation order:
-            // BoxGeometry is easy.
-            // Plane:
-            // Just use BoxGeometry with height 0.1?
-            // Yes, BoxGeometry(length, 0.1, 30) is much safer and guarantees logic matches previous box code.
+            // Create individual material for this segment (so we can update it later)
+            const segMat = material.clone();
+            segMat.map = t;
 
             const boxGeo = new THREE.BoxGeometry(length + 2, 0.2, 30); // Very flat box
-            const flatMesh = new THREE.Mesh(boxGeo, material);
+            const flatMesh = new THREE.Mesh(boxGeo, segMat);
 
             flatMesh.position.x = start.x + dx / 2;
             flatMesh.position.y = 0.2; // Slightly above ground (0)
             flatMesh.position.z = start.y + dy / 2;
 
             flatMesh.rotation.y = -angle;
+
+            flatMesh.name = 'conveyor'; // Tag for cleanup
 
             this.scene.add(flatMesh);
             this.meshes.push(flatMesh);

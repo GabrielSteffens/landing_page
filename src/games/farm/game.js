@@ -12,9 +12,12 @@ import { MapSystem } from './systems/MapSystem.js';
 import { ConveyorBelt } from './entities/ConveyorBelt.js';
 import { House } from './entities/House.js';
 import { Road } from './entities/Road.js';
+import { VirtualJoystick } from './systems/VirtualJoystick.js';
+import { SaveSystem } from './systems/SaveSystem.js';
 
 export class Game {
     constructor(container) {
+        console.log("GAME: Constructor Started");
         this.container = container;
         this.lastTime = 0;
 
@@ -25,6 +28,7 @@ export class Game {
 
         this.economy = new Economy();
         this.assets = new AssetManager();
+        this.saveSystem = new SaveSystem(this);
 
         // Three.js Setup
         this.scene = new THREE.Scene();
@@ -32,268 +36,296 @@ export class Game {
 
         // Camera (Isometric-ish)
         const aspect = container.clientWidth / container.clientHeight;
-        const d = 400;
+        this.viewSize = 300; // Zoom Level (Smaller = Closer/Zoomed In)
+        const d = this.viewSize;
         this.camera = new THREE.OrthographicCamera(-d * aspect, d * aspect, d, -d, 1, 1000);
 
-        this.camera.position.set(200, 200, 200); // Isometric angle
-        this.camera.lookAt(0, 0, 0); // Look at center of world (or player later)
+
+
+        // Camera Position - Centered on the new grid
+        // Center of Grid approx: X=600, Z=400
+        this.camera.position.set(600, 400, 400 + 400);
+        this.camera.lookAt(600, 0, 400);
 
         this.renderer = new THREE.WebGLRenderer({ antialias: true });
         this.renderer.setSize(container.clientWidth, container.clientHeight);
-        this.renderer.setPixelRatio(window.devicePixelRatio); // Enable HD/Retina
+        this.renderer.setPixelRatio(window.devicePixelRatio);
         this.renderer.shadowMap.enabled = true;
+        this.renderer.domElement.style.zIndex = '0';
+        this.renderer.domElement.style.position = 'absolute'; // Force overlap handling
+        this.renderer.domElement.style.top = '0';
+        this.renderer.domElement.style.left = '0';
 
-        // Append canvas to container, but before UI layer
         this.container.insertBefore(this.renderer.domElement, this.container.firstChild);
 
         // Lighting
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.9); // Brighter
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.9);
         this.scene.add(ambientLight);
 
-        this.dirLight = new THREE.DirectionalLight(0xffffff, 1.2); // Strong Sun
+        this.dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
         this.dirLight.position.set(100, 200, 50);
         this.dirLight.castShadow = true;
-        this.dirLight.shadow.camera.left = -500;
-        this.dirLight.shadow.camera.right = 500;
-        this.dirLight.shadow.camera.top = 500;
-        this.dirLight.shadow.camera.bottom = -500;
+        this.dirLight.shadow.camera.left = -1000;
+        this.dirLight.shadow.camera.right = 1000;
+        this.dirLight.shadow.camera.top = 1000;
+        this.dirLight.shadow.camera.bottom = -1000;
         this.scene.add(this.dirLight);
 
-        // --- MAP SYSTEM (Infinite World) ---
+        // --- MAP SYSTEM ---
         this.mapSystem = new MapSystem(this.scene);
-        // Deferred update until all objects are created
-
 
         this.setupInput();
         this.setupUI();
         window.addEventListener('resize', () => this.resize());
 
-        // Game State
-        // Note: Coordinates in 3D are (x, 0, z). Y is up.
-        // We will map 2D (x, y) to 3D (x, z).
-        // Let's center the game area around 0,0 for easier camera logic?
-        // Or keep 0,0 as top-left to match previous logic?
-        // Let's keep 0,0 as top-left for now to minimize logic changes, 
-        // but we might need to adjust camera position to look at the center of the play area.
-        // Previous play area was approx 1280x720.
-        // Let's shift camera to look at center: 640, 0, 360.
-        // Camera (RPG/GBA Style - Straight angle, not diagonal)
-        // Positioned South-Up (Looking North)
-        this.camera.position.set(640, 400, 360 + 400); // Back and Up
-        this.camera.lookAt(640, 0, 360);
+        // --- DEBUG COORDINATES ---
+        this.debugDiv = document.createElement('div');
+        this.debugDiv.style.position = 'absolute';
+        this.debugDiv.style.top = '10px';
+        this.debugDiv.style.right = '10px';
+        this.debugDiv.style.color = 'yellow';
+        this.debugDiv.style.fontFamily = 'monospace';
+        this.debugDiv.style.fontSize = '16px';
+        this.debugDiv.style.fontWeight = 'bold';
+        this.debugDiv.style.pointerEvents = 'none';
+        this.debugDiv.style.background = 'rgba(0, 0, 0, 0.5)';
+        this.debugDiv.style.padding = '5px';
+        document.body.appendChild(this.debugDiv);
+
+        this.raycaster = new THREE.Raycaster();
+        this.mouse = new THREE.Vector2();
+        this.groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+        this.mouseWorld = new THREE.Vector3();
+
+        window.addEventListener('mousemove', (event) => {
+            // Calculate mouse position in normalized device coordinates
+            this.mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            this.mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            // Raycast
+            this.raycaster.setFromCamera(this.mouse, this.camera);
+
+            if (this.raycaster.ray.intersectPlane(this.groundPlane, this.mouseWorld)) {
+                // Show World Z as "Y" because code logic uses (x, y) mapped to (x, z)
+                this.debugDiv.innerText = `X: ${Math.round(this.mouseWorld.x)}, Y: ${Math.round(this.mouseWorld.z)}`;
+            }
+        });
 
         this.player = new Player(100, 100, this.scene, this.assets);
-        this.unlockedZones = 1;
-
-        this.spikes = [
-            new Spike(300, 200, 200, 200, this.scene) // Chicken Zone
-        ];
-
-        // Cow Zone (Initialized but potentially hidden or inactive until unlocked? 
-        // For simplicity, we create it when unlocked, OR create it now but don't spawn there)
-        // Let's create it dynamically when unlocked to support "infinite" expansion logic if needed.
-
+        this.unlockedZones = 1; // Start with 1, but we layout all placeholders?
+        // Let's unlock all 6 for this "Layout Demo" or keep progression?
+        // Image shows full factory. Let's act as if layout is fixed.
 
         this.animals = [];
         this.resources = [];
-
         this.spawnTimer = 0;
         this.spawnRate = 3;
 
-        // Selling Workbench (Stardew Style) - Placed next to Expand Upgrade (50, 100)
-        this.sellWorkbench = new SellWorkbench(150, 100, this.scene);
+        // --- LAYOUT CONFIGURATION ---
+        // Origin (0,0) is top-left.
 
-        // Decor House
-        this.house = new House(500, 0, this.scene);
+        // 1. House (Top Left)
+        this.house = new House(-100, -50, this.scene);
+
+        // 2. Shop (Left, Vertical Center relative to rows)
+        // Rows at Y=250 and Y=550. Center Y=400.
+        this.sellWorkbench = new SellWorkbench(60, 400, this.scene);
+
+        // 3. Roads (Visual Frame)
+        this.staticRoads = [];
+        // Top Road
+        this.staticRoads.push(new Road([{ x: -120, y: 10 }, { x: 1200, y: 10 }], this.scene));
+        // Left Road
+        this.staticRoads.push(new Road([{ x: -150, y: -20 }, { x: -150, y: 1200 }], this.scene));
+        // Bottom Road
+        this.staticRoads.push(new Road([{ x: -150, y: 1170 }, { x: 1200, y: 1170 }], this.scene));
 
 
 
-        // --- UPGRADES (Workbench + Lever) ---
-        // We keep UpgradePad for the "Text/Visual" of cost, but interaction is via Lever.
+        // 4. Grid System (2 Rows x 3 Cols)
+        this.spikes = [];
         this.pads = [];
-        this.projectLevers = []; // Stores { lever, cost, callback }
+        this.projectLevers = [];
+        this.trapLevers = [];
 
-        // --- UPGRADES (Workbench + Lever) ---
-        // Organized on Left Side (X < 0)
-        this.pads = [];
-        this.projectLevers = []; // Stores { lever, cost, callback }
+        const ROWS = 2;
+        const COLS = 3;
+        const START_X = 250;
+        const START_Y = 250;
+        const GAP_X = 400;
+        const ROW_GAP = 400;
 
-        const createUpgradeStation = (x, y, name, cost, callback) => {
-            // 1. Visual Bench (Pad)
-            const pad = new UpgradePad(x, y, name, cost, this.scene, callback);
-            this.pads.push(pad);
+        // Factory Helper (Class Method now)
 
-            // 2. Lever (Interaction) - Placed slightly to the right
-            const lever = new Lever(x + 40, y, this.scene);
-            // Store everything in one object
-            this.projectLevers.push({ lever, pad, cost, callback });
-        };
+        this.createZoneUpgrades = (index, animalType, zoneX, zoneY, isTopRow) => {
+            // Upgrade Position:
+            // Top Row: Above the Pen?
+            // Bottom Row: Below the Pen? 
+            // Image shows markers "Above" the chicken sprites in the top row.
+            // Let's put them consistently ABOVE the pen for now.
 
-        // Helper to Create Upgrades for a Zone
-        this.createZoneUpgrades = (index, animalType, zoneX, zoneY) => {
-            // Position relative to Zone (Above the pen)
-            // Pen Size: 200x200. Center at zoneX, zoneY? 
-            // Spike constructor says: new Spike(x, y, width, height). Position is Top-Left?
-            // "this.group.position.set(x + width / 2, 0, y + height / 2); // Center"
-            // So x,y passed to Spike are indeed Top-Left corner of the area.
+            const upgradeY = zoneY - 80;
 
-            // We want upgrades above the pen.
-            // Pen Top-Left: zoneX, zoneY.
-            // Upgrades Y: zoneY - 150 (Shift up further to avoid conveyor/shop overlap)
-
-            // Position relative to Zone (Above the pen)
-            // Pen Size: 200x200. Center at zoneX, zoneY (Top-Left coords).
-            // Upgrades need to be ABOVE everything.
-            // Image shows: Upgrades -> Conveyor Line -> Pen
-            // Pen is at y=zoneY.
-
-            // Conveyor Line should be at y = zoneY - 50? 
-            // Upgrades at y = zoneY - 150.
-
-            const upgradeY = zoneY - 150;
-
-            // Initialize upgrades in economy if not present (default 1)
             const spikeKey = `spikes_${index}`;
             const spawnKey = `spawn_${index}`;
+            const autoKey = `auto_${index}`;
+
+            // Initialize Economy
             if (!this.economy.upgrades[spikeKey]) this.economy.upgrades[spikeKey] = 1;
             if (!this.economy.upgrades[spawnKey]) this.economy.upgrades[spawnKey] = 1;
-
-            // 1. More [Animal] (Left)
-            createUpgradeStation(zoneX - 60, upgradeY, `More ${animalType}`, 25 + (index * 100), (price, station) => {
-                if (this.economy.buyUpgrade(spawnKey, price)) {
-                    const newCost = Math.floor(price * 1.6);
-                    station.cost = newCost;
-                    station.pad.updateCost(newCost);
-                    return true;
-                }
-                return false;
-            });
-
-            // 2. Auto [Animal] (Middle) - Aligned with Pen Center
-            const autoKey = `auto_${index}`;
             if (this.economy.upgrades[autoKey] === undefined) this.economy.upgrades[autoKey] = 0;
 
-            createUpgradeStation(zoneX + 100, upgradeY, `Auto ${animalType}`, 100 + (index * 200), (price, station) => {
+            // Compact Upgrade Station (Only 1 Combined or 3?)
+            // Image shows "Plus" icon next to chicken. Maybe simplified?
+            // We'll stick to our 3-upgrade levers but spread them tighter.
+
+            // 1. Spawn (Left)
+            this.createUpgradeStation(zoneX, upgradeY, `Spawn`, 25 + (index * 50), (price, station) => {
+                if (this.economy.buyUpgrade(spawnKey, price)) {
+                    station.pad.updateCost(Math.floor(price * 1.6));
+                    return true;
+                }
+                return false;
+            });
+
+            // 2. Auto (Middle)
+            this.createUpgradeStation(zoneX + 110, upgradeY, `Auto`, 100 + (index * 150), (price, station) => {
                 if (this.economy.buyUpgrade(autoKey, price)) {
-                    const newCost = Math.floor(price * 2.0);
-                    station.cost = newCost;
-                    station.pad.updateCost(newCost);
+                    station.pad.updateCost(Math.floor(price * 2.0));
                     return true;
                 }
                 return false;
             });
 
-            // 3. Spikes [Animal] (Right)
-            createUpgradeStation(zoneX + 260, upgradeY, `Spikes ${animalType}`, 10 + (index * 50), (price, station) => {
+            // 3. Spikes (Right)
+            this.createUpgradeStation(zoneX + 220, upgradeY, `Dmg`, 10 + (index * 20), (price, station) => {
                 if (this.economy.buyUpgrade(spikeKey, price)) {
-                    const newCost = Math.floor(price * 1.5);
-                    station.cost = newCost;
-                    station.pad.updateCost(newCost);
+                    station.pad.updateCost(Math.floor(price * 1.5));
                     return true;
                 }
                 return false;
             });
-
-            // 4. Static Road (Visual Conveyor)
-            // Create immediately for layout visuals
-            // Use existing spike object to store reference
-            if (this.spikes[index] && !this.spikes[index].conveyorBelt) {
-                const start = { x: zoneX + 100, y: zoneY + 100 };
-                const mergePoint = { x: zoneX + 100, y: zoneY - 80 };
-                const mainBusPoint = { x: 150, y: zoneY - 80 };
-                const shopPoint = { x: 150, y: 100 };
-
-                const path = [start, mergePoint, mainBusPoint, shopPoint];
-
-                // 4a. Dirt Path (Always Visible Road)
-                if (!this.spikes[index].road) {
-                    this.spikes[index].road = new Road(path, this.scene);
-                }
-
-                // 4b. Conveyor Belt (Machine) - Only if Auto Upgrade? 
-                // For now, let's keep it visible per previous logic, or maybe hide it?
-                // User: "roads have nothing to do with conveyors".
-                // I'll keep Conveyor but maybe the user wants them separate.
-                // I will Add Road.
-                // this.spikes[index].conveyorBelt = new ConveyorBelt(path, this.scene);
-            }
         };
 
-        // Initialize Zone 0 Upgrades (Chicken) - Zone 0 is at 300, 400 (Moved down to fit top bar)
-        // Let's adjust initial positions.
-        // Shop is at 150, 100.
-        // We want a "Main Road" top.
-        // Let's perform a layout shift.
-        // Shop: 150, 100.
-        // Zone 0: Row 0, Col 0.
-        // Base X = 300. Base Y = 400.
+        // Create the 6 Zones Logic (But only init first one)
+        const animalTypes = ['Chicken', 'Cow', 'Pig', 'Sheep', 'Duck', 'Horse']; // Restored variety or keep all chicken? Let's use variety for fun progression
 
-        // Update Grid Logic in Expand Upgrade first to match this base.
-        // We'll init Zone 0 manually at 300, 400.
-        this.createZoneUpgrades(0, 'Chicken', 300, 400);
-        this.spikes[0].setPosition(300, 400); // Update spike pos
+        // Grid Constants
+        // These are already defined above, but keeping them here for clarity as per instruction.
+        // const ROWS = 2;
+        // const COLS = 3;
+        // const START_X = 250;
+        // const START_Y = 250;
+        // const GAP_X = 350;
+        // const ROW_GAP = 300;
 
-        // 3. Area Upgrade (Progressive) - Placed to the left of Shop?
-        createUpgradeStation(50, 100, "Expand", 1000, (price, station) => {
-            if (this.economy.buyUpgrade('area', price)) {
-                // Progressive Logic
-                const nextZoneIndex = this.unlockedZones;
-                this.unlockedZones++;
+        // Helper to spawn a specific zone index
+        this.unlockZone = (index) => {
+            if (index >= ROWS * COLS) return; // Maxed out
 
-                // Grid Logic: 3 Columns
-                const col = nextZoneIndex % 3;
-                const row = Math.floor(nextZoneIndex / 3);
+            const col = index % COLS;
+            const row = Math.floor(index / COLS);
 
-                // Spacing:
-                // Zone Width 200. space 200. Total Block 400-500?
-                // X: 300 + (col * 500)
-                // Y: 400 + (row * 500)
+            const x = START_X + (col * GAP_X);
+            const y = START_Y + (row * ROW_GAP);
 
-                const newZoneY = 400 + (row * 500);
-                const newZoneX = 300 + (col * 500);
+            // Create Pen (Spike Logic)
+            // Row 0 (Top) -> Gate at Bottom. Row 1 (Bottom) -> Gate at Top.
+            // Forced Bottom Gate for all rows
+            const gateSide = 'bottom';
+            const spike = new Spike(x, y, 300, 200, this.scene, gateSide);
+            this.spikes.push(spike);
 
-                const newSpike = new Spike(newZoneX, newZoneY, 200, 200, this.scene);
-                this.spikes.push(newSpike);
+            // Create Upgrades
+            this.createZoneUpgrades(index, animalTypes[index], x, y, row === 0);
 
-                // Create Trap Lever for New Zone
-                const newTrapLever = new Lever(newZoneX - 50, newZoneY + 250, this.scene);
-                this.trapLevers.push({ lever: newTrapLever, targets: [newSpike] });
+            // Create Trap Lever (The Gate)
+            // Position dependent on gateSide
+            // Center Y is y + 100 (relative to top left? wait).
+            // in Game logic: x, y is TOP LEFT of zone.
+            // Spike constructor center: x + width/2, y + height/2.
+            // Height 200.
+            // Bottom Fence Y = y + 200.
+            // Top Fence Y = y.
 
-                // Create Upgrades for New Zone
-                const types = ['Chicken', 'Cow', 'Pig', 'Sheep', 'Duck', 'Horse'];
-                const type = types[nextZoneIndex % types.length];
-                this.createZoneUpgrades(nextZoneIndex, type, newZoneX, newZoneY);
+            // Gate at Bottom (y + 200) + 5px margin
+            const gateY = y + 200 + 5;
+            // Center X = x + 150
+            const gateX = x + 150;
 
-                console.log(`Zone ${this.unlockedZones} Unlocked!`);
+            // --- CONFIGURAÇÃO DA POSIÇÃO DA ALAVANCA ---
+            // Mude este valor para mover a alavanca (ex: -50 para esquerda, +50 para direita)
+            const leverOffsetX = -170;
+            const leverX = gateX + leverOffsetX;
 
-                const newCost = Math.floor(price * 2.5);
-                station.cost = newCost;
-                station.pad.updateCost(newCost);
+            const trapLever = new Lever(leverX, gateY, this.scene);
+            this.trapLevers.push({ lever: trapLever, targets: [spike] });
 
-                return true;
+            // --- CONVEYOR BELT (Below the Pen) ---
+            // Discrete belts for each unit
+            const beltY = y + 240;
+
+            const belt = new ConveyorBelt([
+                { x: x, y: beltY },
+                { x: x + 300, y: beltY }
+            ], this.scene);
+            if (!this.belts) this.belts = [];
+            this.belts.push(belt);
+
+            // Allow obstacles update
+            // We need to re-push obstacles to MapSystem or it handles dynamic?
+            // MapSystem.update takes a list. We should update check list.
+            // But MapSystem.update is called every frame with checks?
+            // "this.mapSystem.update(this.player.x, this.player.y, obstacles);" in Game loop.
+            // So just adding to this.spikes and this.pads is enough for collision logic in update().
+            // However, static map decorations (trees) check during generation.
+            // If we want to clear trees from the new zone, we might need a mechanism.
+            // For now, trees might clip through new zones. We can accept that or clear them.
+        };
+
+        // Game logic initialization is deferred to start()
+        console.log("GAME: Constructor Finished");
+    }
+
+    createUpgradeStation(x, y, name, cost, callback) {
+        // ... (lines 246-251)
+        const pad = new UpgradePad(x, y, name, cost, this.scene, callback);
+        this.pads.push(pad);
+        const lever = new Lever(x + 50, y, this.scene);
+        this.projectLevers.push({ lever, pad, cost, callback });
+    }
+
+    createZoneExpander() {
+        // Expand Upgrade (Global) - Place near house
+        // Logic: Buy -> Unlock Next Index
+        this.createUpgradeStation(250, -50, "Expand Grid", 100, (price, station) => { // Cheap start 100
+            if (this.unlockedZones < 6) {
+                if (this.economy.buyUpgrade('area', price)) {
+                    this.unlockZone(this.unlockedZones);
+                    this.unlockedZones++;
+
+                    // Scale Cost
+                    const newCost = Math.floor(price * 2.5);
+                    station.cost = newCost;
+                    station.pad.updateCost(newCost);
+
+                    if (this.unlockedZones >= 6) {
+                        station.pad.name = "Maxed Out";
+                        station.pad.updateText();
+                        station.cost = 999999;
+                    }
+                    return true;
+                }
             }
             return false;
         });
-
-        // --- TRAP SYSTEM ---
-        this.trapLevers = [];
-        const createTrap = (x, y, targetSpikes) => {
-            const lever = new Lever(x, y, this.scene);
-            this.trapLevers.push({ lever, targets: targetSpikes });
-        };
-        // Zone 1 Trap (Chicken Zone) - aligned with new Zone 0 pos
-        createTrap(250, 650, [this.spikes[0]]); // y = 400 + 250
-
-        // ... (Map Update remains same)
-
-        // Initial Map Generation
-        const trapLeverObstacles = this.trapLevers.map(t => t.lever);
-        const leverObstacles = this.projectLevers.map(l => l.lever);
-        const initObstacles = [...this.pads, ...this.spikes, ...leverObstacles, ...trapLeverObstacles, this.sellWorkbench];
-        this.mapSystem.update(0, 0, initObstacles);
     }
 
     setupInput() {
+        this.input = { keys: {}, joystick: null };
+        this.joystick = new VirtualJoystick();
+        this.input.joystick = this.joystick;
+
         window.addEventListener('keydown', e => this.input.keys[e.key] = true);
         window.addEventListener('keyup', e => this.input.keys[e.key] = false);
 
@@ -307,6 +339,14 @@ export class Game {
     setupUI() {
         const panel = document.getElementById('upgrade-panel');
         if (panel) panel.style.display = 'none';
+
+        const exportBtn = document.getElementById('btn-hud-save');
+        if (exportBtn) {
+            exportBtn.addEventListener('click', () => {
+                this.saveSystem.save();
+                this.saveSystem.export();
+            });
+        }
     }
 
     checkInteractions() {
@@ -345,7 +385,7 @@ export class Game {
         const width = this.container.clientWidth;
         const height = this.container.clientHeight;
         const aspect = width / height;
-        const d = 400;
+        const d = this.viewSize; // Use centralized zoom level
 
         this.camera.left = -d * aspect;
         this.camera.right = d * aspect;
@@ -355,8 +395,38 @@ export class Game {
 
         this.renderer.setSize(width, height);
     }
+    // ...
 
-    async start() {
+    // ...
+    clearLevel() {
+        console.log("Cleaning up level...");
+
+        // 1. Clear known belts (Reference cleanup)
+        if (this.belts) {
+            this.belts.forEach(belt => {
+                if (belt.meshes) belt.meshes.forEach(mesh => this.scene.remove(mesh));
+            });
+        }
+        this.belts = [];
+
+        // 2. Aggressive Cleanup (Ghost hunting)
+        for (let i = this.scene.children.length - 1; i >= 0; i--) {
+            const child = this.scene.children[i];
+            if (child.name === 'conveyor') {
+                this.scene.remove(child);
+            }
+            // 3. Heuristic Cleanup
+            else if (child.isMesh && child.geometry && child.geometry.type === 'BoxGeometry') {
+                if (Math.abs(child.position.y - 0.2) < 0.001) {
+                    console.log("Removed ghost conveyor by Heuristic:", child);
+                    this.scene.remove(child);
+                }
+            }
+        }
+    }
+
+    async start(loadFromSave = true) {
+        console.log(`GAME: start() called. loadFromSave=${loadFromSave}`);
         console.log("Loading assets...");
         const p1 = this.assets.load('chicken', '/farm_assets/models/chicken.glb?t=${Date.now()}');
         const p2 = this.assets.load('player_model', '/farm_assets/models/characters.glb?t=${Date.now()}');
@@ -365,11 +435,53 @@ export class Game {
         console.log("Assets loaded!");
 
         this.scene.remove(this.player.mesh);
+
+        // CLEANUP: Remove old level objects to prevent duplication (Z-fighting)
+        this.clearLevel();
+
         this.player = new Player(100, 100, this.scene, this.assets);
 
-        // Debug: Force a Road
-        new Road([{ x: 0, y: 0 }, { x: 500, y: 0 }], this.scene);
+        // --- GAME STATE INITIALIZATION ---
+        if (loadFromSave) {
+            console.log("Attempting to load save...");
+            if (this.saveSystem.load()) {
+                console.log("Save loaded. Restoring zones:", this.unlockedZones);
+                // Re-create all unlocked zones
+                for (let i = 0; i < this.unlockedZones; i++) {
+                    this.unlockZone(i);
+                }
+            } else {
+                console.log("Save load failed or empty. Starting fresh.");
+                this.unlockedZones = 1;
+                this.unlockZone(0);
+            }
+        } else {
+            console.log("New Game requested. Resetting.");
+            this.saveSystem.reset();
+            this.unlockedZones = 1;
+            this.unlockZone(0);
+        }
 
+        // Create Global Expansion Station
+        this.createZoneExpander();
+
+        // Initial Map Update
+        const allObstacles = [
+            ...this.pads,
+            ...this.spikes,
+            ...this.projectLevers.map(l => l.lever),
+            ...this.trapLevers.map(t => t.lever),
+            this.sellWorkbench,
+            this.house
+        ];
+        this.mapSystem.update(0, 0, allObstacles);
+
+        // --- AUTO SAVE LOOP ---
+        setInterval(() => {
+            this.saveSystem.save();
+        }, 5000); // Auto-save every 5 seconds
+
+        // Start Loop
         this.renderer.setAnimationLoop(this.loop.bind(this));
     }
 
@@ -390,22 +502,35 @@ export class Game {
 
         // Map System Call - Pass Obstacles for tree spawn
         const trapLeverObstacles = this.trapLevers.map(t => t.lever);
-        const obstacles = [...this.pads, ...this.spikes, this.sellWorkbench, ...trapLeverObstacles];
+        // Rename to avoid conflict with player collision obstacles
+        const staticObstacles = [...this.pads, ...this.spikes, this.sellWorkbench, ...trapLeverObstacles];
 
         // Update Map System
-        this.mapSystem.update(this.player.x, this.player.y, obstacles);
+        this.mapSystem.update(this.player.x, this.player.y, staticObstacles);
 
-        // Camera Follow
+        // Camera Follow (Zoomed In)
         const targetX = this.player.x;
         const targetZ = this.player.y;
 
-        this.camera.position.set(targetX, 400, targetZ + 400);
+        // ORIGINAL: 400, 400 (Far)
+        // ZOOMED: 280, 280 (Closer)
+        this.camera.position.set(targetX, 280, targetZ + 280);
         this.camera.lookAt(targetX, 0, targetZ);
 
         // Light Follow
         this.dirLight.position.set(targetX + 100, 200, targetZ + 100);
         this.dirLight.target.position.set(targetX, 0, targetZ);
         this.dirLight.target.updateMatrixWorld();
+
+        // Check Input Joystick Action (Polling)
+        if (this.input.joystick && this.input.joystick.action) {
+            if (!this.input.joystick.wasPressed) {
+                this.checkInteractions();
+                this.input.joystick.wasPressed = true;
+            }
+        } else if (this.input.joystick) {
+            this.input.joystick.wasPressed = false;
+        }
 
         // Spawning
         this.spawnTimer -= dt;
@@ -432,8 +557,56 @@ export class Game {
             this.spawnTimer = this.spawnRate;
         }
 
+        // Create Obstacle List for Collision
+        const obstacles = [];
+
+        // 1. House (Centered approx around x,y)
+        obstacles.push({
+            x: this.house.x - 120, // Move left relative to scale center
+            y: this.house.y - 40,
+            w: 240,
+            h: 80
+        });
+
+        // 2. Shop
+        obstacles.push({
+            x: this.sellWorkbench.x - 30,
+            y: this.sellWorkbench.y - 30,
+            w: 60,
+            h: 60
+        });
+
+        // 3. Upgrades
+        this.pads.forEach(p => {
+            obstacles.push({
+                x: p.x - 40,
+                y: p.y - 40,
+                w: 80,
+                h: 80
+            });
+        });
+
+        // 4. Fences (Perimeter of Spikes)
+        this.spikes.forEach(s => {
+            const margin = 5;
+            // Top
+            obstacles.push({ x: s.x, y: s.y, w: s.width, h: margin });
+            // Left
+            obstacles.push({ x: s.x, y: s.y, w: margin, h: s.height });
+            // Right
+            obstacles.push({ x: s.x + s.width - margin, y: s.y, w: margin, h: s.height });
+
+            // Bottom (With Gate)
+            const gateWidth = 80;
+            const segW = (s.width - gateWidth) / 2;
+            // Bottom Left Segment
+            obstacles.push({ x: s.x, y: s.y + s.height - margin, w: segW, h: margin });
+            // Bottom Right Segment
+            obstacles.push({ x: s.x + s.width - segW, y: s.y + s.height - margin, w: segW, h: margin });
+        });
+
         // Updates
-        this.player.update(dt, this.input, bounds);
+        this.player.update(dt, this.input, bounds, obstacles);
         this.spikes.forEach(spike => spike.update(dt));
         this.trapLevers.forEach(t => t.lever.update(dt));
         this.projectLevers.forEach(l => l.lever.update(dt));
@@ -454,17 +627,26 @@ export class Game {
                         const victim = zoningAnimals[Math.floor(Math.random() * zoningAnimals.length)];
 
                         // BUS CONVEYOR PATHING:
-                        // 1. Zone Center (Start)
-                        // 2. Merge Point: Up to Row Line (Y = zone.y - 80)
-                        // 3. Row Highway: Left to Main Bus (X = 150)
-                        // 4. Main Highway: Up to Shop (Y = 100)
+                        // Row 0 (Top): Paths DOWN to Y=480 (Central Bus)
+                        // Row 1 (Bottom): Paths UP to Y=480
 
-                        const start = { x: zone.x + 100, y: zone.y + 100 };
-                        const mergePoint = { x: zone.x + 100, y: zone.y - 80 }; // Just below upgrades
-                        const mainBusPoint = { x: 150, y: zone.y - 80 }; // Left side of the world
-                        const shopPoint = { x: 150, y: 100 }; // Sell Workbench
+                        // Zone Coords are Top-Left. 
+                        // Center X = zone.x + 150 (since width 300)
+                        // Center Y = zone.y + 100 (since height 200)
 
-                        const path = [mergePoint, mainBusPoint, shopPoint];
+                        const zoneCenterX = zone.x + 150;
+                        const zoneCenterY = zone.y + 100;
+
+                        const BUS_Y = 480;
+                        const SHOP_X = 50;
+                        const SHOP_Y = 380; // sellWorkbench at 0, 350. Size approx 50-80?
+
+                        const start = { x: victim.x, y: victim.y };
+                        const laneMerge = { x: zoneCenterX, y: BUS_Y };
+                        const busEnd = { x: SHOP_X, y: BUS_Y };
+                        const shopTarget = { x: SHOP_X, y: SHOP_Y };
+
+                        const path = [laneMerge, busEnd, shopTarget];
 
                         const res = new Resource(start.x, start.y, victim.dropValue, this.scene, null);
                         res.setPath(path);
@@ -481,30 +663,18 @@ export class Game {
 
                 // Visual Belt Check
                 if (!zone.conveyorBelt) {
-                    // Visual Path matches Resource Path
-                    const start = { x: zone.x + 100, y: zone.y + 100 };
-                    const mergePoint = { x: zone.x + 100, y: zone.y - 80 };
-                    const mainBusPoint = { x: 150, y: zone.y - 80 };
-                    const shopPoint = { x: 150, y: 100 };
-                    const end = { x: this.sellWorkbench.x, y: this.sellWorkbench.y }; // Should match 150, 100
+                    const zoneCenterX = zone.x + 150;
+                    const zoneCenterY = zone.y + 100; // Visual start from center of pen
+                    const BUS_Y = 480;
+                    const SHOP_X = 50;
+                    const SHOP_Y = 380;
 
-                    // Create Belt segments
-                    // We only create the segments relevant to THIS zone to avoid duplicate drawing of the main bus?
-                    // Actually, ConveyorBelt is just visual meshes. Overlapping meshes look okay usually (z-fighting might flicker).
-                    // Ideal:
-                    // 1. Vertical Stub (Zone -> Merge)
-                    // 2. Horizontal Segment (Merge -> MainBus) 
-                    //    -> IF we are not the first zone, this draws over previous? No, each zone has unique X.
-                    //    -> X is unique. So segment from X to 150 is unique length.
-                    //    -> But if Zone 1 is at 300, line is 300->150.
-                    //    -> If Zone 2 is at 800, line is 800->150. This overlaps Zone 1's line.
-                    //    -> Better: Line to "Next Zone Left"? Or just simple full line?
-                    //    -> Simple full line: Each zone draws its OWN line all the way to the bus.
-                    //    -> Z-fighting is a risk.
-                    //    -> Optimization: Draw line to `Math.max(150, prevZoneX)`? Too complex state.
-                    //    -> Let's just draw the full line for now. Z-fighting on identical texture/color is usually invisible.
+                    const start = { x: zoneCenterX, y: zoneCenterY };
+                    const laneMerge = { x: zoneCenterX, y: BUS_Y };
+                    const busEnd = { x: SHOP_X, y: BUS_Y };
+                    const shopTarget = { x: SHOP_X, y: SHOP_Y };
 
-                    const path = [start, mergePoint, mainBusPoint, shopPoint];
+                    const path = [start, laneMerge, busEnd, shopTarget];
                     zone.conveyorBelt = new ConveyorBelt(path, this.scene);
                 }
             }

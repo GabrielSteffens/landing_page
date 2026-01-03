@@ -17,43 +17,47 @@ export class UpgradePad {
         scene.add(this.group);
         this.cooldown = 0;
 
-        // Visual: Upgrade Workbench (Sprite) - High Quality with Transparency
-        const map = new THREE.CanvasTexture(document.createElement('canvas')); // Placeholder
-        map.magFilter = THREE.NearestFilter;
-        map.minFilter = THREE.NearestFilter; // Sharpness
+        // Visual: Upgrade Workbench (Sprite)
+        // logic: Load image -> Draw to Canvas -> Remove White Pixels -> properties to Texture
+        const benchTex = new THREE.TextureLoader().load('/farm_assets/textures/upgrade_bench.png');
+        // We use a temporary standard load in case processing fails, but we want to process it.
 
-        const img = new Image();
-        img.src = `/farm_assets/textures/upgrade_bench.png?t=${Date.now()}`;
-        img.onload = () => {
+        const mat = new THREE.SpriteMaterial({ map: benchTex });
+        const mesh = new THREE.Sprite(mat);
+        mesh.scale.set(90, 90, 1);
+        mesh.center.set(0.5, 0.0);
+        mesh.position.y = 5;
+        this.group.add(mesh);
+
+        // Async Process to Remove White
+        const imgLoader = new THREE.ImageLoader();
+        imgLoader.load(`/farm_assets/textures/upgrade_bench.png?t=${Date.now()}`, (image) => {
             const canvas = document.createElement('canvas');
-            canvas.width = img.width;
-            canvas.height = img.height;
+            canvas.width = image.width;
+            canvas.height = image.height;
             const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0);
+            ctx.drawImage(image, 0, 0);
 
-            // Remove White Background
             const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
             const data = imgData.data;
             for (let i = 0; i < data.length; i += 4) {
                 const r = data[i];
                 const g = data[i + 1];
                 const b = data[i + 2];
-                // Check if White (or very close)
-                if (r > 240 && g > 240 && b > 240) {
-                    data[i + 3] = 0; // Alpha 0
+                // If White-ish
+                if (r > 230 && g > 230 && b > 230) {
+                    data[i + 3] = 0; // Transparent
                 }
             }
             ctx.putImageData(imgData, 0, 0);
-            map.image = canvas;
-            map.needsUpdate = true;
-        };
 
-        const mat = new THREE.SpriteMaterial({ map: map });
-        const mesh = new THREE.Sprite(mat);
-        mesh.scale.set(90, 90, 1); // Increased from 60
-        mesh.position.y = 30; // Raised to sit better (center is at 30, height is 90/2 = 45... wait center is 0.5,0.5. So 45 is half. position 45 puts bottom at 0)
-        // actually let's just make it bigger.
-        this.group.add(mesh);
+            const procTex = new THREE.CanvasTexture(canvas);
+            procTex.magFilter = THREE.NearestFilter;
+            procTex.minFilter = THREE.NearestFilter;
+
+            mat.map = procTex;
+            mat.needsUpdate = true;
+        });
 
 
 

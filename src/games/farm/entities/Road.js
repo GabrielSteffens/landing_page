@@ -6,7 +6,8 @@ export class Road {
         this.meshes = [];
 
         const texLoader = new THREE.TextureLoader();
-        const texture = texLoader.load('/farm_assets/textures/path.png');
+        // Add timestamp to force reload and bypass cache
+        const texture = texLoader.load(`/farm_assets/textures/path.png?t=${Date.now()}`);
         texture.wrapS = THREE.RepeatWrapping;
         texture.wrapT = THREE.RepeatWrapping;
         texture.magFilter = THREE.NearestFilter;

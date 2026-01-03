@@ -11,7 +11,9 @@ export class Player {
         this.holdingMeat = 0;
         this.heldValue = 0;
         this.maxCapacity = Infinity; // No limit
+        this.maxCapacity = Infinity; // No limit
         this.walkTimer = 0;
+        this.wobbleTimer = 0; // For animation
 
         // Sprite Setup (Pixel Art)
         const texLoader = new THREE.TextureLoader();
@@ -20,13 +22,14 @@ export class Player {
         map.minFilter = THREE.NearestFilter;
 
         const material = new THREE.SpriteMaterial({ map: map });
+        material.depthTest = false; // Always render on top (Foreground)
         this.mesh = new THREE.Sprite(material);
         this.mesh.scale.set(60, 60, 1); // Adjust size to match world scale
         this.mesh.center.set(0.5, 0); // Pivot at bottom center (feet)
         this.mesh.renderOrder = 999; // Ensure drawn on top of ground
         this.mesh.frustumCulled = false; // Prevent disappearance on edges/neg coords
 
-        this.mesh.position.set(x, 0.1, y); // Slightly above 0 to prevent z-fight
+        this.mesh.position.set(x, 2.5, y); // Raised to 2.5 to be above Roads (0.5) and Shadows (1.0)
         scene.add(this.mesh);
 
         // Shadow Blob (Simple Circle under sprite)
@@ -34,7 +37,7 @@ export class Player {
         const shadowMat = new THREE.MeshBasicMaterial({ color: 0x000000, opacity: 0.3, transparent: true });
         this.shadow = new THREE.Mesh(shadowGeo, shadowMat);
         this.shadow.rotation.x = -Math.PI / 2;
-        this.shadow.position.y = 1;
+        this.shadow.position.y = 1.1; // Slightly above ground objects
         scene.add(this.shadow);
 
         // Helper for stack (Adjust position for sprite)
@@ -47,7 +50,7 @@ export class Player {
         // Let's attach to scene and update position manually for now to avoid billboard rotation issues.
     }
 
-    update(dt, input, bounds) {
+    update(dt, input, bounds, obstacles = []) {
         let dx = 0;
         let dz = 0;
 
@@ -56,14 +59,33 @@ export class Player {
         if (input.keys['ArrowLeft'] || input.keys['a']) dx -= 1;
         if (input.keys['ArrowRight'] || input.keys['d']) dx += 1;
 
-        if (dx !== 0 || dz !== 0) {
-            const length = Math.sqrt(dx * dx + dz * dz);
-            dx /= length;
-            dz /= length;
+        // Joystick Input
+        if (input.joystick && input.joystick.active) {
+            dx += input.joystick.delta.x;
+            dz += input.joystick.delta.y;
         }
 
-        this.x += dx * this.speed * dt;
-        this.y += dz * this.speed * dt;
+        if (dx !== 0 || dz !== 0) {
+            const length = Math.sqrt(dx * dx + dz * dz);
+            // Only normalize if length > 1 (to allow slow movement with joystick)
+            if (length > 1) {
+                dx /= length;
+                dz /= length;
+            }
+        }
+
+        // --- COLLISION LOGIC ---
+        // Try move X
+        const nextX = this.x + dx * this.speed * dt;
+        if (!this.checkCollision(nextX, this.y, obstacles)) {
+            this.x = nextX;
+        }
+
+        // Try move Z (Y in 2D logic)
+        const nextY = this.y + dz * this.speed * dt;
+        if (!this.checkCollision(this.x, nextY, obstacles)) {
+            this.y = nextY;
+        }
 
         // Infinite Map: No bounds clamping!
         // this.x = Math.max(0, Math.min(bounds.width - this.width, this.x));
@@ -90,15 +112,40 @@ export class Player {
             else this.mesh.scale.x = 60;
         }
 
+        // --- PROCEDURAL ANIMATION (WADDLE) ---
         if (dx !== 0 || dz !== 0) {
-            // No Bob - Keep flat on ground to prevent flying/disappearing
-            this.mesh.position.y = 0.1;
+            this.wobbleTimer += dt * 15; // Speed of waddle
+
+            // Waddle (Rotate Z)
+            this.mesh.material.rotation = Math.sin(this.wobbleTimer) * 0.2; // +/- 0.2 rad tilt
+
+            // Bob (Bounce Y)
+            // Base Y is 2.5. Bounce adds up to 1.0
+            const bob = Math.abs(Math.sin(this.wobbleTimer * 2)) * 1.5;
+            this.mesh.position.y = 2.5 + bob;
         } else {
-            this.mesh.position.y = 0.1;
+            // Reset when stopped
+            this.mesh.material.rotation = 0;
+            this.mesh.position.y = 2.5;
+            this.wobbleTimer = 0;
         }
 
         // --- STACK VISUALS ---
         this.updateStack(dt, dx !== 0 || dz !== 0);
+    }
+
+    checkCollision(x, y, obstacles) {
+        const half = 10; // Hitbox radius (smaller than visual)
+        for (const obs of obstacles) {
+            // AABB Check
+            // Player Box: [x-half, x+half] x [y-half, y+half]
+            // Obs Box: [obs.x, obs.x + obs.w] x [obs.y, obs.y + obs.h]
+            if (x + half > obs.x && x - half < obs.x + obs.w &&
+                y + half > obs.y && y - half < obs.y + obs.h) {
+                return true;
+            }
+        }
+        return false;
     }
 
     updateStack(dt, isMoving) {
