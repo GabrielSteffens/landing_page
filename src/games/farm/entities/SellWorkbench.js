@@ -10,7 +10,7 @@ export class SellWorkbench {
 
         // Visual Sprite - The Shop (Chest)
         const texLoader = new THREE.TextureLoader();
-        const map = texLoader.load('assets/textures/chest.png');
+        const map = texLoader.load('/farm_assets/textures/chest.png');
         map.magFilter = THREE.NearestFilter;
         map.minFilter = THREE.NearestFilter;
         const material = new THREE.SpriteMaterial({ map: map });

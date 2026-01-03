@@ -8,7 +8,7 @@ export class MapSystem {
 
         // Ground Texture
         const texLoader = new THREE.TextureLoader();
-        this.groundTex = texLoader.load('assets/textures/grass_stardew.png');
+        this.groundTex = texLoader.load('/farm_assets/textures/grass_stardew.png');
         this.groundTex.wrapS = THREE.RepeatWrapping;
         this.groundTex.wrapT = THREE.RepeatWrapping;
         this.groundTex.repeat.set(10, 10); // Match scale (previously 20 for 2000 size)
@@ -21,7 +21,7 @@ export class MapSystem {
         // Updated for Sprites
         // Texture
         const loader = new THREE.TextureLoader();
-        this.treeMap = loader.load('assets/textures/tree.png');
+        this.treeMap = loader.load('/farm_assets/textures/tree.png');
         this.treeMap.magFilter = THREE.NearestFilter;
         this.treeMat = new THREE.SpriteMaterial({ map: this.treeMap });
 

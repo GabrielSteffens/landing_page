@@ -14,7 +14,7 @@ export class Lever {
         map.magFilter = THREE.NearestFilter;
 
         const img = new Image();
-        img.src = `assets/textures/lever_sheet.png?t=${Date.now()}`;
+        img.src = `/farm_assets/textures/lever_sheet.png?t=${Date.now()}`;
         img.onload = () => {
             const canvas = document.createElement('canvas');
             canvas.width = img.width;

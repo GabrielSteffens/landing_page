@@ -15,7 +15,7 @@ export class Player {
 
         // Sprite Setup (Pixel Art)
         const texLoader = new THREE.TextureLoader();
-        const map = texLoader.load('assets/textures/farmer.png');
+        const map = texLoader.load('/farm_assets/textures/farmer.png');
         map.magFilter = THREE.NearestFilter;
         map.minFilter = THREE.NearestFilter;
 

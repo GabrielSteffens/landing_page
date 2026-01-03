@@ -43,7 +43,7 @@ export class Animal {
         if (type === 'chicken') {
             // Sprite (Stardew Style)
             const texLoader = new THREE.TextureLoader();
-            const map = texLoader.load('assets/textures/chicken_stardew.png');
+            const map = texLoader.load('/farm_assets/textures/chicken_stardew.png');
             map.magFilter = THREE.NearestFilter;
             const mat = new THREE.SpriteMaterial({ map: map });
             this.mesh = new THREE.Sprite(mat);

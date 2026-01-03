@@ -23,7 +23,7 @@ export class UpgradePad {
         map.minFilter = THREE.NearestFilter; // Sharpness
 
         const img = new Image();
-        img.src = `assets/textures/upgrade_bench.png?t=${Date.now()}`;
+        img.src = `/farm_assets/textures/upgrade_bench.png?t=${Date.now()}`;
         img.onload = () => {
             const canvas = document.createElement('canvas');
             canvas.width = img.width;

@@ -7,7 +7,7 @@ export class House {
         this.scene = scene;
 
         const texLoader = new THREE.TextureLoader();
-        const map = texLoader.load('assets/textures/house.png');
+        const map = texLoader.load('/farm_assets/textures/house.png');
         map.magFilter = THREE.NearestFilter;
         map.minFilter = THREE.NearestFilter;
 
