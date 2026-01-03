@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FARM TYCOON - FAKE ADS ARCADE</title>
+    <link rel="stylesheet" href="/src/css/style.css">
+    <link rel="stylesheet" href="/src/css/farm.css">
+</head>
+
+<body>
+    <div class="scanlines"></div>
+
+    <div class="game-ui-overlay">
+        <a href="index.html" class="btn btn-secondary back-btn">← MENU</a>
+        <h2 class="game-title-overlay">FARM TYCOON 3D</h2>
+    </div>
+
+    <!-- Farm Game Container (No canvas init here, Three.js creates it) -->
+    <div id="game-container" style="width: 100%; height: 100vh; overflow: hidden;"></div>
+
+    <script type="module">
+        import { Game } from './src/games/farm/game.js';
+
+        window.onload = () => {
+            const container = document.getElementById('game-container');
+            const game = new Game(container);
+            game.start();
+        };
+    </script>
+</body>
+
+</html>

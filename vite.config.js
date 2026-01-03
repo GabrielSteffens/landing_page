@@ -11,7 +11,8 @@ export default defineConfig({
             input: {
                 main: resolve(__dirname, 'index.html'),
                 pullThePin: resolve(__dirname, 'pull-the-pin.html'),
-                endlessRunner: resolve(__dirname, 'endless-runner.html')
+                endlessRunner: resolve(__dirname, 'endless-runner.html'),
+                farm: resolve(__dirname, 'farm.html')
             }
         }
     }
